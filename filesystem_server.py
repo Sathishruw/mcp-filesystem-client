@@ -151,6 +151,10 @@ Total items: {file_count + dir_count}
 
 
 if __name__ == "__main__":
-    print(f"Starting Simple File MCP Server...", file=sys.stderr)
-    print(f"Working directory: {WORKING_DIR}", file=sys.stderr)
-    mcp.run()
+    try:
+        print(f"Starting Simple File MCP Server...", file=sys.stderr)
+        print(f"Working directory: {WORKING_DIR}", file=sys.stderr)
+        mcp.run()
+    except Exception as e:
+        print(f"❌ Failed to start server: {str(e)}", file=sys.stderr)
+        sys.exit(1)
