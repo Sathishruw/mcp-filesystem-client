@@ -63,11 +63,26 @@ async def run_integration_tests():
         result = await client.call_tool("read_file", {"filepath": "test.txt"})
         print(f"✅ File read: {result}")
 
-        # Verify content
-        if test_content in str(result):
+        # Verify content - extract text from FastMCP response format
+        content_found = False
+        if isinstance(result, dict) and 'content' in result:
+            for content_item in result['content']:
+                if content_item.get('type') == 'text':
+                    file_text = content_item.get('text', '')
+                    if test_content in file_text:
+                        content_found = True
+                        break
+
+        # Also check if content is directly in the result string
+        if not content_found and test_content in str(result):
+            content_found = True
+
+        if content_found:
             print("✅ File content matches expected")
         else:
             print("❌ File content mismatch!")
+            print(f"Expected to find: '{test_content}'")
+            print(f"Got result: {result}")
             return False
 
         # Test 5: Create a directory
@@ -97,11 +112,27 @@ async def run_integration_tests():
         print("\n🚫 Test 9: Error handling - read non-existent file")
         try:
             result = await client.call_tool("read_file", {"filepath": "nonexistent.txt"})
-            if "Error" in str(result) or "does not exist" in str(result):
+
+            # Check if error is properly handled
+            error_found = False
+            result_str = str(result)
+
+            if "Error" in result_str or "does not exist" in result_str:
+                error_found = True
+            elif isinstance(result, dict) and 'content' in result:
+                for content_item in result['content']:
+                    if content_item.get('type') == 'text':
+                        text_content = content_item.get('text', '')
+                        if "Error" in text_content or "does not exist" in text_content:
+                            error_found = True
+                            break
+
+            if error_found:
                 print("✅ Error handling works correctly")
             else:
                 print(f"❌ Unexpected result for non-existent file: {result}")
                 return False
+
         except Exception as e:
             print(f"✅ Exception caught as expected: {e}")
 
@@ -109,11 +140,27 @@ async def run_integration_tests():
         print("\n🔒 Test 10: Security test - access outside directory")
         try:
             result = await client.call_tool("read_file", {"filepath": "../../../etc/passwd"})
-            if "Error" in str(result) and "Access denied" in str(result):
+
+            # Check if security is properly enforced
+            security_ok = False
+            result_str = str(result)
+
+            if "Error" in result_str and "Access denied" in result_str:
+                security_ok = True
+            elif isinstance(result, dict) and 'content' in result:
+                for content_item in result['content']:
+                    if content_item.get('type') == 'text':
+                        text_content = content_item.get('text', '')
+                        if "Error" in text_content and "Access denied" in text_content:
+                            security_ok = True
+                            break
+
+            if security_ok:
                 print("✅ Security check works correctly")
             else:
                 print(f"❌ Security vulnerability detected: {result}")
                 return False
+
         except Exception as e:
             print(f"✅ Security exception caught: {e}")
 
