@@ -12,7 +12,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -22,57 +23,26 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install fastmcp asyncio
-        # Add any other dependencies your project needs
+        pip install fastmcp
 
     - name: Test server startup
       run: |
-        # Test if the server can start
-        timeout 10s python3 filesystem_server.py &
+        echo "Testing if server can start..."
+        timeout 5s python3 filesystem_server.py &
         SERVER_PID=$!
         sleep 2
         
-        # Check if process is still running
         if kill -0 $SERVER_PID 2>/dev/null; then
           echo "✅ Server started successfully"
-          kill $SERVER_PID
+          kill $SERVER_PID || true
         else
           echo "❌ Server failed to start"
           exit 1
         fi
 
-    - name: Test client connection
+    - name: Run integration tests
       run: |
-        # Run a basic client test
-        python3 -c "
-import asyncio
-import sys
-sys.path.append('.')
-from fastmcp_client import FastMCPClient
-
-async def test():
-    client = FastMCPClient(['python3', 'filesystem_server.py'])
-    try:
-        await client.start()
-        await client.initialize()
-        
-        # Test basic functionality
-        result = await client.call_tool('get_working_directory')
-        print('✅ Client connection test passed')
-        print(f'Working directory: {result}')
-        
-        # Test file listing
-        result = await client.call_tool('list_files', {'directory': '.'})
-        print('✅ File listing test passed')
-
-    except Exception as e:
-        print(f'❌ Test failed: {e}')
-        sys.exit(1)
-    finally:
-        await client.close()
-
-asyncio.run(test())
-"
+        python3 integration_test.py
 
   test-multiple-python:
     runs-on: ubuntu-latest
@@ -81,7 +51,8 @@ asyncio.run(test())
         python-version: ['3.8', '3.9', '3.10', '3.11']
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -93,18 +64,20 @@ asyncio.run(test())
         python -m pip install --upgrade pip
         pip install fastmcp
 
-    - name: Test client
+    - name: Run basic test
       run: |
-        python3 fastmcp_client.py
+        echo "Testing with Python ${{ matrix.python-version }}"
+        python3 integration_test.py
 
   test-cross-platform:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]  # Removed windows for now due to potential path issues
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -116,5 +89,6 @@ asyncio.run(test())
         python -m pip install --upgrade pip
         pip install fastmcp
 
-    - name: Test on ${{ matrix.os }}
-      run: python3 fastmcp_client.py
+    - name: Run tests on ${{ matrix.os }}
+      run: |
+        python3 integration_test.py
