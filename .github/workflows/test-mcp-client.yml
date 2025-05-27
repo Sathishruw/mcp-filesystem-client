@@ -30,7 +30,7 @@ jobs:
         echo "Testing if server can start..."
         timeout 50s python3 filesystem_server.py &
         SERVER_PID=$!
-        sleep 2
+        sleep 20
         
         if kill -0 $SERVER_PID 2>/dev/null; then
           echo "✅ Server started successfully"
