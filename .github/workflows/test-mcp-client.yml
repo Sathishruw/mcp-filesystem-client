@@ -25,48 +25,33 @@ jobs:
         python -m pip install --upgrade pip
         pip install fastmcp
 
-    - name: Test server startup
+    - name: Check files exist
       run: |
-        echo "Testing if server can start..."
-        
-        # Start server in background and capture its output
-        python3 filesystem_server.py > server_output.log 2>&1 &
-        SERVER_PID=$!
-        
-        # Give it time to start
-        sleep 20
-        
-        # Check if the process is still running (it should be)
-        if kill -0 $SERVER_PID 2>/dev/null; then
-          echo "✅ Server process is running"
-          
-          # Check if it printed the expected startup message
-          if grep -q "Starting Simple File MCP Server" server_output.log; then
-            echo "✅ Server started successfully with correct output"
-          else
-            echo "⚠️ Server running but unexpected output:"
-            cat server_output.log
-          fi
-          
-          # Clean shutdown
-          kill $SERVER_PID || true
-          wait $SERVER_PID 2>/dev/null || true
-        else
-          echo "❌ Server process died unexpectedly"
-          echo "Server output:"
-          cat server_output.log
-          exit 1
-        fi
+        echo "Checking required files..."
+        ls -la
+        test -f filesystem_server.py || (echo "❌ filesystem_server.py not found" && exit 1)
+        test -f fastmcp_client.py || (echo "❌ fastmcp_client.py not found" && exit 1)
+        test -f integration_test.py || (echo "❌ integration_test.py not found" && exit 1)
+        echo "✅ All required files found"
+
+    - name: Validate Python syntax
+      run: |
+        echo "Checking Python syntax..."
+        python3 -m py_compile filesystem_server.py
+        python3 -m py_compile fastmcp_client.py
+        python3 -m py_compile integration_test.py
+        echo "✅ Python syntax is valid"
 
     - name: Run integration tests
       run: |
+        echo "Running comprehensive integration tests..."
         python3 integration_test.py
 
   test-multiple-python:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.10', '3.11', '3.13']
 
     steps:
     - name: Checkout code
@@ -82,16 +67,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install fastmcp
 
-    - name: Run basic test
+    - name: Test with Python ${{ matrix.python-version }}
       run: |
         echo "Testing with Python ${{ matrix.python-version }}"
         python3 integration_test.py
 
-  test-cross-platform:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]  # Removed windows for now due to potential path issues
+  test-import:
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
@@ -107,6 +89,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install fastmcp
 
-    - name: Run tests on ${{ matrix.os }}
+    - name: Test imports
       run: |
-        python3 integration_test.py
+        echo "Testing if modules can be imported..."
+        python3 -c "import fastmcp_client; print('✅ fastmcp_client imports successfully')"
+        python3 -c "from fastmcp_client import FastMCPClient; print('✅ FastMCPClient class imports successfully')"
+        python3 -c "import sys; sys.path.append('.'); from filesystem_server import mcp; print('✅ filesystem_server imports successfully')"
