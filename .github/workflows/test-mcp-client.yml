@@ -47,6 +47,99 @@ jobs:
         echo "Running comprehensive integration tests..."
         python3 integration_test.py
 
+  test-github-integration:
+    runs-on: ubuntu-latest
+    # Only run if a GitHub token is available
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install fastmcp
+        # Install any additional dependencies from requirements.txt if it exists
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+
+    - name: Check GitHub integration files exist
+      run: |
+        echo "Checking GitHub integration files..."
+        test -f github_server.py || (echo "❌ github_server.py not found" && exit 1)
+        test -f test_github_integration.py || (echo "❌ test_github_integration.py not found" && exit 1)
+        echo "✅ All GitHub integration files found"
+
+    - name: Validate GitHub integration Python syntax
+      run: |
+        echo "Checking Python syntax for GitHub integration..."
+        python3 -m py_compile github_server.py
+        python3 -m py_compile test_github_integration.py
+        echo "✅ GitHub integration Python syntax is valid"
+
+    - name: Run GitHub integration tests
+      env:
+        GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.MCP_GITHUB_TOKEN }}
+      run: |
+        echo "Running GitHub integration tests..."
+        if [ -z "$GITHUB_PERSONAL_ACCESS_TOKEN" ]; then
+          echo "⚠️  Warning: GITHUB_PERSONAL_ACCESS_TOKEN not set, skipping GitHub-specific tests"
+          echo "To enable GitHub tests, add MCP_GITHUB_TOKEN to your repository secrets"
+        else
+          echo "✅ GitHub token is set, running full integration tests"
+        fi
+        python3 test_github_integration.py
+
+  test-unified-server:
+    runs-on: ubuntu-latest
+    # Only run if files exist
+    continue-on-error: true
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install fastmcp
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+
+    - name: Check unified server files
+      run: |
+        echo "Checking for unified server files..."
+        if [ -f unified_server.py ]; then
+          echo "✅ unified_server.py found"
+          python3 -m py_compile unified_server.py
+        else
+          echo "⚠️  unified_server.py not found, skipping unified tests"
+          exit 0
+        fi
+
+    - name: Test unified server
+      env:
+        GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.MCP_GITHUB_TOKEN }}
+      run: |
+        if [ -f unified_server.py ]; then
+          echo "Testing unified server..."
+          # Run a basic import test
+          python3 -c "import unified_server; print('✅ Unified server imports successfully')"
+        fi
+
   test-multiple-python:
     runs-on: ubuntu-latest
     strategy:
@@ -95,3 +188,8 @@ jobs:
         python3 -c "import fastmcp_client; print('✅ fastmcp_client imports successfully')"
         python3 -c "from fastmcp_client import FastMCPClient; print('✅ FastMCPClient class imports successfully')"
         python3 -c "import sys; sys.path.append('.'); from filesystem_server import mcp; print('✅ filesystem_server imports successfully')"
+        
+        # Test GitHub integration imports if files exist
+        if [ -f github_server.py ]; then
+          python3 -c "import github_server; print('✅ github_server imports successfully')"
+        fi

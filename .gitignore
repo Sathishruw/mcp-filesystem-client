@@ -1,1 +1,3 @@
 __pycache__
+config_nogit_upload.py
+*.DS_STORE

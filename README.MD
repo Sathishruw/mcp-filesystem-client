@@ -1,295 +1,191 @@
-# Code Architecture Explanation
+# MCP Filesystem & GitHub Server
 
-## 🧠 High-Level Overview
+A complete implementation of Model Context Protocol (MCP) servers for filesystem and GitHub operations, with a unified server that combines both.
 
-This project implements a **client-server architecture** using the **Model Context Protocol (MCP)**:
+## 🚀 Features
 
+- **Filesystem Server**: Secure local file operations (read, write, list, create directories)
+- **GitHub Server**: Full GitHub API integration (repos, files, issues, search)
+- **Unified Server**: Combined filesystem + GitHub with sync capabilities
+- **Async Operations**: High-performance concurrent operations
+- **Security**: Sandboxed filesystem access, secure token handling
+- **Type Safety**: Full type hints and parameter validation
+
+## 📦 Installation
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd mcp-play/fileSystem
+
+# Install dependencies
+pip install -r requirements.txt
 ```
-[Your App] ←→ [FastMCPClient] ←→ [stdio] ←→ [FilesystemServer] ←→ [File System]
+
+## 🔧 Configuration
+
+### GitHub Token (for GitHub features)
+```bash
+# Get a token from: https://github.com/settings/tokens
+# Required scopes: repo, read:user
+export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token_here
 ```
 
-## 🔍 Detailed Code Breakdown
+## 🏃 Quick Start
 
-### 1. FastMCPClient (`fastmcp_client.py`)
+### Option 1: Filesystem Server Only
+```bash
+python filesystem_server.py
+```
 
-This is the **heart** of the system - it handles all communication with MCP servers.
+### Option 2: GitHub Server Only
+```bash
+python github_server.py
+```
 
-#### Key Methods Explained:
+### Option 3: Unified Server (Recommended)
+```bash
+python unified_server.py
+```
 
-**`__init__(self, server_command)`**
-- Stores the command to start the server (e.g., `["python3", "server.py"]`)
-- Initializes tracking variables for requests and responses
-
-**`async def start()`**
+### Using the Client
 ```python
-self.process = await asyncio.create_subprocess_exec(
-    *self.server_command,
-    stdin=asyncio.subprocess.PIPE,    # We send JSON here
-    stdout=asyncio.subprocess.PIPE,   # Server responds here
-    stderr=asyncio.subprocess.PIPE    # Error messages here
-)
-```
-- Starts the server as a subprocess
-- Sets up pipes for communication
-- **Key insight**: MCP uses stdio (standard input/output) for communication, not network sockets
+from fastmcp_client import FastMCPClient
 
-**`async def _read_stdout()`**
-```python
-buffer = ""
-while True:
-    data = await self.process.stdout.read(1024)
-    buffer += data.decode('utf-8')
-    
-    while '\n' in buffer:
-        line, buffer = buffer.split('\n', 1)
-        message = json.loads(line)
-        await self._handle_message(message)
-```
-- **Streaming parser**: Reads data in chunks, handles partial messages
-- **Line-based protocol**: Each JSON message is on its own line
-- **Async processing**: Doesn't block while waiting for data
+# Connect to unified server
+client = FastMCPClient(["python3", "unified_server.py"])
+await client.start()
+await client.initialize()
 
-**`async def call_tool(name, arguments)`**
-```python
-call_request = {
-    "jsonrpc": "2.0",
-    "id": self._next_id(),
-    "method": "tools/call",
-    "params": {
-        "name": name,
-        "arguments": arguments
-    }
-}
-```
-- **JSON-RPC format**: Standard protocol for remote procedure calls
-- **Unique IDs**: Each request gets an ID to match with responses
-- **Async/await**: Returns a Future that resolves when response arrives
+# Filesystem operations
+await client.call_tool("write_file", {
+    "filepath": "hello.txt",
+    "content": "Hello, World!"
+})
 
-#### The Magic of Async Communication:
+# GitHub operations
+repos = await client.call_tool("gh_list_repositories", {})
 
-```python
-# This is how multiple operations can happen concurrently:
-async def example():
-    client = FastMCPClient(["python3", "server.py"])
-    await client.start()
-    
-    # These can run in parallel!
-    task1 = client.call_tool("read_file", {"filepath": "file1.txt"})
-    task2 = client.call_tool("read_file", {"filepath": "file2.txt"})
-    task3 = client.call_tool("list_files", {"directory": "."})
-    
-    # Wait for all to complete
-    result1, result2, result3 = await asyncio.gather(task1, task2, task3)
+# Sync operations
+await client.call_tool("sync_github_to_local", {
+    "owner": "octocat",
+    "repo": "Hello-World",
+    "github_path": "README.md",
+    "local_path": "downloads/readme.md"
+})
 ```
 
-### 2. Filesystem Server (`filesystem_server.py`)
+## 📚 Available Tools
 
-This uses **FastMCP** to create a server that responds to tool calls.
+### Filesystem Tools
+- `list_files(directory)` - List files and directories
+- `read_file(filepath)` - Read file contents
+- `write_file(filepath, content)` - Write content to file
+- `create_directory(directory)` - Create new directory
+- `get_working_directory()` - Get working directory info
 
-#### How FastMCP Works:
+### GitHub Tools
+- `gh_list_repositories(user?)` - List GitHub repositories
+- `gh_read_file(owner, repo, path, branch?)` - Read file from GitHub
+- `gh_list_files(owner, repo, path?, branch?)` - List files in GitHub repo
+- `gh_create_or_update_file(owner, repo, path, content, message, branch?)` - Create/update file
+- `gh_list_issues(owner, repo, state?)` - List repository issues
+- `create_issue(owner, repo, title, body, labels?)` - Create new issue
+- `search_code(query, user?, repo?)` - Search code on GitHub
 
-**`@mcp.tool()` Decorator**
-```python
-@mcp.tool()
-def read_file(filepath: str) -> str:
-    """Read the contents of a text file."""
-    # Implementation here
+### Sync Tools (Unified Server Only)
+- `sync_github_to_local(owner, repo, github_path, local_path)` - Download from GitHub
+- `sync_local_to_github(local_path, owner, repo, github_path, message, branch?)` - Upload to GitHub
+
+## 📁 Project Structure
+
 ```
-- **Automatic registration**: FastMCP automatically exposes this as a tool
-- **Type hints**: FastMCP uses these to validate parameters
-- **Docstring**: Becomes the tool description
-
-**Security Implementation:**
-```python
-full_path = (WORKING_DIR / filepath).resolve()
-if not str(full_path).startswith(str(WORKING_DIR)):
-    return "Error: Access denied"
-```
-- **Path resolution**: Converts relative paths to absolute
-- **Security check**: Ensures we can't escape the working directory
-- **Example**: `../../../etc/passwd` would be blocked
-
-**Error Handling Pattern:**
-```python
-try:
-    # Try the operation
-    content = full_path.read_text(encoding='utf-8')
-    return f"Content of {filepath}:\n\n{content}"
-except UnicodeDecodeError:
-    # Handle binary files
-    return f"File appears to be binary"
-except Exception as e:
-    # Handle any other errors
-    return f"Error: {str(e)}"
+mcp-play/fileSystem/
+├── filesystem_server.py      # Original filesystem MCP server
+├── github_server.py          # GitHub MCP server
+├── unified_server.py         # Combined server with sync tools
+├── fastmcp_client.py         # MCP client implementation
+├── integration_test.py       # Integration tests
+├── test_github_integration.py # GitHub integration tests
+├── requirements.txt          # Python dependencies
+├── README.MD                 # Architecture documentation
+├── GITHUB_MCP_SERVER.md      # GitHub server documentation
+└── github_integration/       # Additional GitHub integration examples
 ```
 
-#### FastMCP's Magic:
+## 🏗️ Architecture
 
-When you call `mcp.run()`, FastMCP:
-1. **Scans** for all `@mcp.tool()` decorated functions
-2. **Creates** JSON-RPC handlers for each tool
-3. **Starts** listening on stdin for JSON-RPC requests
-4. **Routes** requests to the appropriate tool function
-5. **Returns** responses in FastMCP's structured format
+The project uses the Model Context Protocol (MCP) for client-server communication:
 
-### 3. Integration Tests (`integration_test.py`)
-
-This demonstrates **real-world usage patterns** and **testing best practices**.
-
-#### Test Structure:
-```python
-async def run_integration_tests():
-    test_dir = tempfile.mkdtemp()  # Isolated test environment
-    os.chdir(test_dir)             # Work in clean directory
-    
-    try:
-        # Run all tests
-        client = FastMCPClient(["python3", "filesystem_server.py"])
-        await client.start()
-        await client.initialize()
-        
-        # Test each operation
-        # ...
-        
-    finally:
-        await client.close()       # Always cleanup
-        shutil.rmtree(test_dir)    # Remove test files
+```
+Your Application
+       ↓
+FastMCPClient
+       ↓ (JSON-RPC over stdio)
+   MCP Server
+   ├── Filesystem Operations → Local Files
+   └── GitHub Operations → GitHub API
 ```
 
-#### Response Format Handling:
-```python
-# FastMCP returns structured responses:
-result = {
-    'content': [
-        {
-            'type': 'text',
-            'text': 'actual content here'
-        }
-    ],
-    'isError': False
-}
+Key architectural decisions:
+- **Subprocess Communication**: Uses stdio instead of network sockets
+- **Async/Await**: Non-blocking operations for better performance
+- **Security First**: Sandboxed filesystem access, no path traversal
+- **Type Safety**: Full type hints for all operations
 
-# So we need to extract the text:
-if isinstance(result, dict) and 'content' in result:
-    for content_item in result['content']:
-        if content_item.get('type') == 'text':
-            actual_text = content_item.get('text', '')
+## 🧪 Testing
+
+Run the test suites:
+
+```bash
+# Test filesystem operations
+python integration_test.py
+
+# Test GitHub integration
+python test_github_integration.py
 ```
 
-## 🔄 Communication Protocol Deep Dive
+## 🔒 Security
 
-### 1. Initialization Sequence:
-```
-Client                           Server
-  |                                |
-  |---> initialize request ------>|
-  |<--- capabilities response ----|
-  |---> initialized notification->|
-  |---> tools/list request ------>|
-  |<--- available tools ----------|
-```
+1. **Filesystem Security**:
+   - All operations restricted to working directory
+   - Path traversal attacks prevented
+   - Safe error handling for binary files
 
-### 2. Tool Call Sequence:
-```
-Client                           Server
-  |                                |
-  |---> tools/call request ------>|
-  |     (with tool name & args)    |
-  |                                |---> execute tool function
-  |                                |<--- function result
-  |<--- structured response -------|
-```
+2. **GitHub Security**:
+   - Token stored in environment variables
+   - Never hardcode tokens
+   - Use minimal required scopes
 
-### 3. JSON-RPC Message Flow:
+## 📖 Documentation
 
-**Request Example:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 123,
-  "method": "tools/call",
-  "params": {
-    "name": "read_file",
-    "arguments": {"filepath": "example.txt"}
-  }
-}
-```
+- [Architecture Overview](README.MD) - Detailed code architecture
+- [GitHub MCP Server](GITHUB_MCP_SERVER.md) - GitHub server documentation
+- [GitHub Integration Guide](github_integration/GITHUB_INTEGRATION.md) - Integration examples
 
-**Response Example:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 123,
-  "result": {
-    "content": [{"type": "text", "text": "File contents here"}],
-    "isError": false
-  }
-}
-```
+## 🎯 Use Cases
 
-## 🎯 Key Design Patterns
+- **AI Assistants**: Give AI tools safe file system access
+- **Automation**: Sync between GitHub and local files
+- **Backup**: Download GitHub repositories locally
+- **Bulk Operations**: Update multiple repositories
+- **Issue Management**: Export issues for analysis
+- **Code Search**: Search across repositories
 
-### 1. **Async/Await Pattern**
-```python
-# Instead of blocking:
-result = blocking_function()
+## 🤝 Contributing
 
-# We use:
-result = await async_function()
-```
-- **Benefits**: Non-blocking, can handle multiple operations
-- **Usage**: All I/O operations (file reads, network, subprocess)
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-### 2. **Future/Promise Pattern**
-```python
-future = asyncio.Future()
-self.pending_requests[request_id] = future
+## 📄 License
 
-# Later, when response arrives:
-future.set_result(response)
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-# Original caller gets the result:
-response = await future
-```
+## 🙏 Acknowledgments
 
-### 3. **Context Manager Pattern**
-```python
-try:
-    # Setup
-    await client.start()
-    # Use client
-finally:
-    # Always cleanup
-    await client.close()
-```
-
-### 4. **Publisher/Subscriber Pattern**
-```python
-# Client publishes requests
-await self._send_message(request)
-
-# Background task subscribes to responses
-async def _read_stdout(self):
-    # Continuously listen for responses
-    while True:
-        message = await read_message()
-        await self._handle_message(message)
-```
-
-## 🧪 Why This Architecture Works
-
-1. **Separation of Concerns**: Client handles communication, server handles business logic
-2. **Language Agnostic**: Server could be written in any language
-3. **Process Isolation**: Server crashes don't affect client
-4. **Scalable**: Easy to add new tools to server
-5. **Testable**: Each component can be tested independently
-6. **Async**: Can handle multiple operations concurrently
-
-## 🚀 Performance Characteristics
-
-- **Startup**: ~100-200ms (subprocess creation + initialization)
-- **Per-operation**: ~2-5ms (JSON serialization + tool execution)
-- **Memory**: Low footprint (streaming I/O, no buffering large files)
-- **Concurrency**: Excellent (async/await + single-threaded event loop)
-
-This architecture is **production-ready** and can be extended for real applications!
+- Built with [FastMCP](https://github.com/anthropics/fastmcp)
+- Uses [PyGithub](https://github.com/PyGithub/PyGithub) for GitHub integration
+- Implements the [Model Context Protocol](https://modelcontextprotocol.io/) standard
