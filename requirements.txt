@@ -1,1 +1,5 @@
+# Core MCP library
 mcp>=1.0.0
+
+# GitHub integration
+PyGithub>=2.1.0

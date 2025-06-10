@@ -1,0 +1,14 @@
+# GitHub MCP Integration Requirements
+# These are the Python packages needed for the GitHub integration
+
+# Core MCP library (already required by your existing project)
+mcp>=1.0.0
+
+# Additional dependencies for enhanced functionality (optional)
+# Uncomment if you want to add these features:
+
+# aiohttp>=3.8.0          # For HTTP operations
+# aiofiles>=0.8.0         # For async file operations  
+# python-dateutil>=2.8.0  # For date parsing
+# PyYAML>=6.0             # For YAML configuration files
+# rich>=13.0.0            # For beautiful console output
